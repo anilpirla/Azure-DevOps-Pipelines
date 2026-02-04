@@ -1,0 +1,46 @@
+# In a Maven-based Java pipeline, the basic goals are the standard lifecycle phases you’ll most often use. You can add them to your YAML pipeline depending on how much of the lifecycle you want to run.
+
+# Common Maven Goals
+# validate – checks that the project is correct and all necessary information is available.
+
+# compile – compiles the source code of the project.
+
+# test – runs unit tests using a suitable testing framework (JUnit/TestNG).
+
+# package – packages the compiled code into a distributable format (e.g., JAR, WAR).
+
+# verify – runs checks to ensure the package is valid and meets quality criteria.
+
+# install – installs the package into the local Maven repository for use as a dependency in other projects.
+
+# deploy – copies the final package to a remote repository for sharing with other developers or projects.
+
+
+trigger:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+- task: Maven@3
+  inputs:
+    mavenPomFile: 'pom.xml'
+    goals: 'validate compile test package install'
+    options: '-Dmaven.test.failure.ignore=false'
+    javaHomeOption: 'JDKVersion'
+    jdkVersionOption: '1.11'
+    publishJUnitResults: true
+    testResultsFiles: '**/surefire-reports/TEST-*.xml'
+    codeCoverageToolOption: 'JaCoCo'
+
+- task: CopyFiles@2
+  inputs:
+    contents: '**/target/*.jar'
+    targetFolder: '$(Build.ArtifactStagingDirectory)'
+
+- task: PublishBuildArtifacts@1
+  inputs:
+    pathToPublish: '$(Build.ArtifactStagingDirectory)'
+    artifactName: 'drop'
+    publishLocation: 'Container'
