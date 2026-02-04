@@ -1,0 +1,127 @@
+# Alright Anil, let’s lay out the **containerized deployment version** so you can compare it with the App Service setup. This approach assumes you want to build a Docker image from your Maven project and then deploy it to **Azure Kubernetes Service (AKS)** (or any Kubernetes cluster).
+
+# ---
+
+### Multi‑Stage Pipeline with Docker + AKS
+
+# ```yaml
+
+trigger:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+# Stage 1: Build
+- stage: Build
+  displayName: "Build Stage"
+  jobs:
+  - job: BuildJob
+    steps:
+    - task: Maven@3
+      inputs:
+        mavenPomFile: 'pom.xml'
+        goals: 'clean compile'
+        javaHomeOption: 'JDKVersion'
+        jdkVersionOption: '1.11'
+
+# Stage 2: Test
+- stage: Test
+  displayName: "Test Stage"
+  dependsOn: Build
+  jobs:
+  - job: TestJob
+    steps:
+    - task: Maven@3
+      inputs:
+        mavenPomFile: 'pom.xml'
+        goals: 'test'
+        javaHomeOption: 'JDKVersion'
+        jdkVersionOption: '1.11'
+        publishJUnitResults: true
+        testResultsFiles: '**/surefire-reports/TEST-*.xml'
+        codeCoverageToolOption: 'JaCoCo'
+
+# Stage 3: Package
+- stage: Package
+  displayName: "Package Stage"
+  dependsOn: Test
+  jobs:
+  - job: PackageJob
+    steps:
+    - task: Maven@3
+      inputs:
+        mavenPomFile: 'pom.xml'
+        goals: 'package'
+        javaHomeOption: 'JDKVersion'
+        jdkVersionOption: '1.11'
+
+    - task: CopyFiles@2
+      inputs:
+        contents: '**/target/*.jar'
+        targetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathToPublish: '$(Build.ArtifactStagingDirectory)'
+        artifactName: 'drop'
+        publishLocation: 'Container'
+
+# Stage 4: Build & Push Docker Image
+- stage: Docker
+  displayName: "Docker Build & Push"
+  dependsOn: Package
+  jobs:
+  - job: DockerJob
+    steps:
+    - task: Docker@2
+      displayName: "Build and Push Docker Image"
+      inputs:
+        containerRegistry: '<your-acr-service-connection>'   # Azure Container Registry connection
+        repository: '<your-repo-name>'                       # e.g. myapp
+        command: 'buildAndPush'
+        Dockerfile: '**/Dockerfile'
+        tags: |
+          $(Build.BuildId)
+
+# Stage 5: Deploy to AKS
+- stage: Deploy
+  displayName: "Deploy to AKS"
+  dependsOn: Docker
+  jobs:
+  - job: DeployJob
+    steps:
+    - task: Kubernetes@1
+      displayName: "Deploy to AKS"
+      inputs:
+        connectionType: 'Azure Resource Manager'
+        azureSubscription: '<your-service-connection>'
+        azureResourceGroup: '<your-resource-group>'
+        kubernetesCluster: '<your-aks-cluster>'
+        namespace: 'default'
+        command: 'apply'
+        useConfigurationFile: true
+        configuration: 'manifests/deployment.yaml'
+# ```
+
+# ---
+
+### How This Works
+# - **Docker Stage**: Builds a Docker image from your Maven JAR/WAR and pushes it to **Azure Container Registry (ACR)**.
+# - **Deploy Stage**: Applies Kubernetes manifests (`deployment.yaml`, `service.yaml`) to your AKS cluster, pulling the image from ACR.
+
+# ---
+
+### Key Differences vs App Service
+# | Aspect              | App Service (Java SE) | Containerized (AKS) |
+# |---------------------|------------------------|----------------------|
+# | Deployment target   | Azure App Service      | Kubernetes cluster   |
+# | Artifact type       | JAR/WAR directly       | Docker image         |
+# | Scaling             | Built-in autoscale     | Kubernetes HPA/cluster scaling |
+# | Complexity          | Simple, managed PaaS   | More flexible, but requires cluster management |
+# | Best for            | Quick deployments, smaller apps | Microservices, complex workloads |
+
+# # ---
+
+# Do you want me to also sketch out a **sample Dockerfile** and **Kubernetes deployment.yaml** that would pair with this pipeline? That way you’ll have the full picture of how the JAR moves from Maven → Docker → AKS.
