@@ -1,0 +1,97 @@
+trigger:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+# Stage 1: Build
+- stage: Build
+  displayName: "Build Stage"
+  jobs:
+  - job: BuildJob
+    steps:
+    - task: Maven@3
+      inputs:
+        mavenPomFile: 'pom.xml'
+        goals: 'clean compile'
+        javaHomeOption: 'JDKVersion'
+        jdkVersionOption: '1.11'
+
+# Stage 2: Test
+- stage: Test
+  displayName: "Test Stage"
+  dependsOn: Build
+  jobs:
+  - job: TestJob
+    steps:
+    - task: Maven@3
+      inputs:
+        mavenPomFile: 'pom.xml'
+        goals: 'test'
+        javaHomeOption: 'JDKVersion'
+        jdkVersionOption: '1.11'
+        publishJUnitResults: true
+        testResultsFiles: '**/surefire-reports/TEST-*.xml'
+        codeCoverageToolOption: 'JaCoCo'
+
+# Stage 3: Package
+- stage: Package
+  displayName: "Package Stage"
+  dependsOn: Test
+  jobs:
+  - job: PackageJob
+    steps:
+    - task: Maven@3
+      inputs:
+        mavenPomFile: 'pom.xml'
+        goals: 'package install'
+        javaHomeOption: 'JDKVersion'
+        jdkVersionOption: '1.11'
+
+    - task: CopyFiles@2
+      inputs:
+        contents: '**/target/*.jar'
+        targetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathToPublish: '$(Build.ArtifactStagingDirectory)'
+        artifactName: 'drop'
+        publishLocation: 'Container'
+
+# Stage 4: Deploy (example to Azure Web App)
+- stage: Deploy
+  displayName: "Deploy Stage"
+  dependsOn: Package
+  jobs:
+  - job: DeployJob
+    steps:
+    - task: AzureWebApp@1
+      inputs:
+        azureSubscription: '<your-service-connection>'
+        appName: '<your-app-service-name>'
+        package: '$(Pipeline.Workspace)/drop/*.jar'
+
+
+
+
+#----------------------------------------
+
+# How It Works
+# Build Stage: Compiles your Java code.
+
+# Test Stage: Runs unit tests, publishes JUnit results, and collects coverage.
+
+# Package Stage: Packages into JAR/WAR, publishes artifacts.
+
+# Deploy Stage: Deploys the artifact to Azure App Service (you can swap this for Kubernetes, VM, or any other target).
+
+
+
+# Tips
+# Replace <your-service-connection> with the Azure DevOps service connection name.
+
+# Replace <your-app-service-name> with your actual App Service.
+
+# If you don’t want deployment yet, you can omit the Deploy stage and stop at Package.
